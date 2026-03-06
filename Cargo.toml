@@ -2,6 +2,8 @@
 name = "stock-cli"
 version = "0.1.0"
 edition = "2024"
+description = "stock price viewing cli that can show for any ticker that the alpha vantage api supports. You can choose how many days to see price quotes. It graphs prices"
+license = "MIT"
 
 [dependencies]
 reqwest = { version = "0.12", features = ["blocking", "json"] }
