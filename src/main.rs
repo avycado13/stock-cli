@@ -1,8 +1,9 @@
 use std::env;
 
 use serde::Deserialize;
-// use chrono::NaiveDate;
 use std::collections::BTreeMap;
+use chrono::{Duration, NaiveDate};
+use textplots::{Chart, LabelFormat, Shape, TickDisplay, Plot, LabelBuilder, TickDisplayBuilder};
 
 #[derive(Debug, Deserialize)]
 pub struct ApiResponse {
@@ -10,7 +11,7 @@ pub struct ApiResponse {
     pub meta_data: MetaData,
 
     #[serde(rename = "Time Series (Daily)")]
-    pub time_series_daily: BTreeMap<String, DailyBar>,
+    pub time_series_daily: BTreeMap<NaiveDate, DailyBar>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -22,7 +23,7 @@ pub struct MetaData {
     pub symbol: String,
 
     #[serde(rename = "3. Last Refreshed")]
-    pub last_refreshed: String,
+    pub last_refreshed: NaiveDate,
 
     #[serde(rename = "4. Output Size")]
     pub output_size: String,
@@ -55,7 +56,8 @@ fn main() {
 let days: usize = args
     .get(2)
     .and_then(|d| d.parse().ok())
-    .unwrap_or(5);   let client = reqwest::blocking::Client::new();
+    .unwrap_or(5);
+let client = reqwest::blocking::Client::new();
        let raw_quote: ApiResponse = client
         .get(format!("https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol={}&apikey=NVRP9BI9YDIIPZPY",ticker))
         .send()
@@ -67,4 +69,40 @@ let days: usize = args
 
     for (date, bar) in raw_quote.time_series_daily.iter().rev().take(days){
         println!("{} -> close {}", date, bar.close);
-    }}
+    }
+    println!("\n");
+    let mut closes: Vec<(NaiveDate, f32)> = raw_quote
+    .time_series_daily
+    .iter()
+    .rev()
+    .take(days)
+    .map(|(date, bar)| (*date, bar.close.parse::<f32>().unwrap()))
+    .collect();
+
+// reverse so oldest → newest for plotting
+closes.reverse();
+
+let start = closes.first().unwrap().0;
+let end = closes.last().unwrap().0;
+
+let data: Vec<(f32, f32)> = closes
+    .iter()
+    .map(|(date, close)| ((date.signed_duration_since(start).num_days()) as f32, *close))
+    .collect();
+
+Chart::new_with_y_range(
+    180,
+    60,
+    0.0,
+    (end - start).num_days() as f32,
+    data.iter().map(|p| p.1).fold(f32::MAX, f32::min) - 1.0,
+    data.iter().map(|p| p.1).fold(f32::MIN, f32::max) + 1.0,
+)
+.lineplot(&Shape::Lines(&data))
+.x_label_format(LabelFormat::Custom(Box::new(move |val| {
+    format!("{}", start + Duration::days(val as i64))
+})))
+.y_label_format(LabelFormat::Value)
+.y_tick_display(TickDisplay::Sparse)
+.nice();
+}
